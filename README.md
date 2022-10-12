@@ -18,14 +18,20 @@ pip install -r requirements.txt
 - Verify that arm-none-eabi-gdb | arm-non-eabi-gdb.exe is recognized on the path.  
 
 ## Getting the lab started
-1. Navigate to the coredump_server with two seperate terminals.  
-2. In Terminal # 1, type the following (python for windows):
+1. Navigate to the coredump_server with two seperate terminals.  **It's necessary that gdb is run from within the coredump folder.**
+2. In Terminal # 1, type the following:
 
+**For Ubuntu | MAC**
 ```
 python3 coredump_gdbserver.py ../files/lab.axf ../files/coredump_lab.bin  --debug
 ```
 
-3. In Terminal #2 type the following
+**For Windows**
+```
+python coredump_gdbserver.py ../files/lab.axf ../files/coredump_lab.bin  --debug
+```
+
+3. In Terminal #2 type the following (if you get an error and don't see this output skip to step 4)
 ```
 arm-none-eabi-gdb
 ```
@@ -66,14 +72,20 @@ HardFault_HandlerC (hardfault_args=<optimized out>) at ..\..\..\..\..\sdk\platfo
 
 ```
 
+4.  With Windows or Ubuntu, you could get an error about the .gdbinit file.   A quick work around is to call arm-none-eabi-gdb with additional parameters that point to your .gdbinit file.  For example (Replace C:\MY_DIRECTORY with your folder location):
+
+```
+arm-none-eabi-gdb -iex "set auto-load safe-path C:\MY_DIRECTORY\gdb_lab\coredump_server\.gdbinit"
+```
+
 ## Lab Instructions
 
-1. Initially we see we are in a Hardfault on the original display and we can verify this on (gdb) with 
+1. Initially we see we are in a Hardfault on the original display and we can verify this on (gdb) by issueing a backtrace command.
 ```
-(gdb) -bt
+(gdb)bt
 ```
 
-2.  We can first look at all of the registers with:
+2.  We can also look at all of the registers with:
 
 ```
 (gdb) info registers
@@ -82,13 +94,13 @@ HardFault_HandlerC (hardfault_args=<optimized out>) at ..\..\..\..\..\sdk\platfo
 3. GDB Struggles with Exception Frames, so we must manually pop off the stack.  We know we can find the stack frame memory address by looking for the STATUS_BASE in the Hardfault_Handler:
 
 ```
-(gdb) - x /4x 0x7fc9000
+(gdb)x /4x 0x7fc9000
 ```
 
 4.  Let's visually see the stack frame by copying the address from the previous command, using the following command:
 
 ```
-x /32a 0x07fc5208
+(gdb)x /32a 0x07fc5208
 ```
 
 5. We know that a stack frame on the M0+ will look like this:  r0, r1, r2, r3, r12, lr, pc, cpsr.  So let's set all of the registers to the values on the stack, effectively popping off the exception frame.
@@ -107,10 +119,10 @@ x /32a 0x07fc5208
 6.  Now let's run a backtrace again:
 
 ```
-(gdb) bt
+(gdb)bt
 ```
 
-7.  We now know where it faulted, function wise but notice that GDB can't unroll the call trace? It's because there was a null pointer in the PC, we need to understand how this happened:
+7.  We now know where it faulted, function wise, but notice that GDB can't unroll the call trace? It's because there was a null pointer in the PC, we need to understand how this happened:
 
 ```
 #0  0x00000000 in ?? ()
@@ -122,7 +134,7 @@ Backtrace stopped: previous frame identical to this frame (corrupt stack?)
 8.  We see that the user_on_connection was in the LR and the PC was changed to zero, let's look at the disassembly of user_on_connection:
 
 ```
-(gdb) disassemble user_on_connection
+(gdb)disassemble user_on_connection
 ```
 
 9.  You should see the disassembly of the function printout.  Let's see where in the function we linked to (subtract one from the link register):
@@ -174,7 +186,7 @@ The second instruction then takes the value in R1, adds 12 and stores it back in
 12.  Let's take a look to see what the first instruction is loading:
 
 ```
-x /1a 0x7fc2ce8
+(gdb)x /1a 0x7fc2ce8
 ```
 This appears to be a variable:
 
@@ -205,7 +217,7 @@ $1 = {
 14.  This seems reasonable, the second instruction we add 12 to the first address and pass this value into the pc.  So let's make sure we are referencing this variable by checking the size of the variable:
 
 ```
-print sizeof(user_app_env)
+(gdb)print sizeof(user_app_env)
 ```
 
 We should see a value of 16, so this tells us that we are, in fact, passing one of these variables into the pc.  Let's find out which one:
@@ -213,17 +225,17 @@ We should see a value of 16, so this tells us that we are, in fact, passing one 
 15.  We are adding 12, to 0x7fc8e70, we can use a 'convenience variable' to store this and print it.
 
 ```
-set $bad_ptr_address = 0x7fc8e70 + 12
-p /x $bad_ptr_address
+(gdb)set $bad_ptr_address = 0x7fc8e70 + 12
+(gdb)p /x $bad_ptr_address
 ```
 
 We now have the address, so let's check the zero value variables addresses, to verify which one is the culprit - type each one line by line:
 
 ```
-p /x &user_app_env.con_id
-p /x &user_app_env.conhdl
-p /x &user_app_env.con_sup_to
-p /x &user_app_env.con_cb
+(gdb)p /x &user_app_env.con_id
+(gdb)p /x &user_app_env.conhdl
+(gdb)p /x &user_app_env.con_sup_to
+(gdb)p /x &user_app_env.con_cb
 ```
 At this point we should understand which variable the null pointer came from.  
 
