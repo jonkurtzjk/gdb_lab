@@ -1,0 +1,1 @@
+ezFlashCLI~=1.0.7
