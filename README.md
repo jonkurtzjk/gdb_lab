@@ -181,9 +181,15 @@ ldr	r1, [r1, #12]
 
 The first instruction is what is referred to as PC relative addressing.  This takes the relative PC value (next instruction + 8) and adds 56 to it.  It takes the address at this location and loads it into R1.  
 
-The second instruction then takes the value in R1, adds 12 and stores it back into R1.  
+The second instruction then takes the value in R1, adds 12 and stores it back into R1. 
 
-12.  Let's take a look to see what the first instruction is loading:
+12. We are adding 12, to 0x7fc8e70, we can use a 'convenience variable' to store this for later:
+
+```
+(gdb)set $bad_ptr_address = 0x7fc8e70 + 12
+```
+
+13.  Let's take a look to see what the first instruction is loading:
 
 ```
 (gdb)x /1a 0x7fc2ce8
@@ -194,7 +200,7 @@ This appears to be a variable:
 0x7fc2ce8:	0x7fc8e70 <user_app_env>
 ```
 
-13.  Let's inpsect this variable:
+14.  Let's inpsect this variable:
 
 ```
 (gdb)p user_app_env
@@ -214,28 +220,55 @@ $1 = {
 }
 ```
 
-14.  This seems reasonable, the second instruction we add 12 to the first address and pass this value into the pc.  So let's make sure we are referencing this variable by checking the size of the variable:
+15.  This seems reasonable, the second instruction we add 12 to the first address and pass this value into the pc.  So let's make sure we are referencing this variable by checking the size of the variable:
 
 ```
 (gdb)print sizeof(user_app_env)
 ```
 
-We should see a value of 16, so this tells us that we are, in fact, passing one of these variables into the pc.  Let's find out which one:
+We should see a value of 16, so this tells us that we are, in fact, passing one of these variables into the pc.
 
-15.  We are adding 12, to 0x7fc8e70, we can use a 'convenience variable' to store this and print it.
 
-```
-(gdb)set $bad_ptr_address = 0x7fc8e70 + 12
-(gdb)p /x $bad_ptr_address
-```
-
-We now have the address, so let's check the zero value variables addresses, to verify which one is the culprit - type each one line by line:
+16. To gain further insight into this variable let's inspect the type:
 
 ```
-(gdb)p /x &user_app_env.con_id
-(gdb)p /x &user_app_env.conhdl
-(gdb)p /x &user_app_env.con_sup_to
-(gdb)p /x &user_app_env.con_cb
+(gdb) ptype user_app_env
 ```
-At this point we should understand which variable the null pointer came from.  
 
+Which produces the following output:
+
+```
+type = struct {
+    uint8_t con_id;
+    uint16_t conhdl;
+    uint16_t con_intvl;
+    uint16_t con_latency;
+    uint16_t con_sup_to;
+    my_connection_cb_t con_cb;
+}
+```
+
+17.  con_cb seems to a function callback, which could potentially point to a null pointer, let's inspect this type and value:
+
+```
+(gdb)ptype user_app_env.con_cb
+```
+
+Which produces the following output:
+
+```
+type = void (*)(uint8_t)
+```
+
+This type is a function pointer, and from above we see that it is a null variable.  This is looking like the culprit, but let's verify.
+
+18.  Let's inspect the address of the callback first, and print the address we saved off previously:
+
+```
+(gdb) p /x &user_app_env.con_cb
+(gdb) p /x $bad_ptr_address
+```
+
+The output provides confirmation that the PC is trying to load 
+the address pointed to by user_app_env.con_cb, which is a null
+pointer.
