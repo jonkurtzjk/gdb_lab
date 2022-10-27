@@ -116,6 +116,12 @@ arm-none-eabi-gdb -iex "set auto-load safe-path C:\MY_DIRECTORY\gdb_lab\coredump
 (gdb) set $cpsr = 0x60000000
 ```
 
+We also have to 'pop' off the stack manually.  The stack frame is always a standard stack frame on M0+, so we know its 32 bytes.
+
+```
+(gdb) set $sp += 32
+```
+
 6.  Now let's run a backtrace again:
 
 ```
